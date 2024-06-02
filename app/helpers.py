@@ -81,6 +81,7 @@ def get_formatted_entries(entries):
             'title': entry.title,
             'description': entry.description,
             'last_updated_by': entry.last_updated_by,
+            'color': entry.color,
             'image_url': url_for('uploaded_file', filename=entry.image_filename) if entry.image_filename else None,
             'image_url_external': url_for('uploaded_file', filename=entry.image_filename, _external=True) if entry.image_filename else None,
             'index': i - index,

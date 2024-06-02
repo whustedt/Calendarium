@@ -29,6 +29,14 @@
             </div>
         </div>
         <div class="form-section">
+            <label>Color:</label>
+            {% if entry.color %}
+            <input type="color" name="color" value="{{ entry.color }}">
+            {% else %}
+            <input type="color" name="color" value="#ffffff">
+            {% endif %}
+        </div>
+        <div class="form-section">
             <label>Title:</label>
             <input type="text" name="title" required value="{{ entry.title }}">
         </div>

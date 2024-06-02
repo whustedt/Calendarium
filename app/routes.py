@@ -6,6 +6,7 @@ from app import db
 from datetime import datetime
 from .helpers import handle_image_upload, parse_date, get_formatted_entries, create_zip
 import os
+import re
 
 def init_app(app):
     @app.after_request
@@ -116,13 +117,16 @@ def init_app(app):
                 return jsonify({"error": "Invalid category"}), 400
             if not parse_date(request.form['date']):
                 return jsonify({"error": "Invalid date format, must be YYYY-MM-DD"}), 400
+            if not re.match(r'^#[0-9a-fA-F]{6}$', request.form['color']):
+                return jsonify({"error": "Invalid color format, must be a hex color code"}), 400
 
             new_entry = Entry(
                 date = request.form['date'],
                 category = request.form['category'],
                 title = request.form['title'],
                 description = request.form.get('description'),
-                last_updated_by = request.remote_addr
+                last_updated_by = request.remote_addr,
+                color = request.form.get('color') not in ['#ffffff', '#000000'] and request.form.get('color') or None
             )
             db.session.add(new_entry)
             db.session.flush()  # Ensure the ID is assigned without committing the transaction
@@ -151,6 +155,8 @@ def init_app(app):
                 return jsonify({"error": "Invalid category"}), 400
             if not parse_date(request.form['date']):
                 return jsonify({"error": "Invalid date format, must be YYYY-MM-DD"}), 400
+            if not re.match(r'^#[0-9a-fA-F]{6}$', request.form['color']):
+                return jsonify({"error": "Invalid color format, must be a hex color code"}), 400
 
             giphy_url = request.form.get('giphyUrl')
             file = request.files.get('entryImage')
@@ -173,6 +179,7 @@ def init_app(app):
             entry.title = request.form['title']
             entry.description = request.form.get('description')
             entry.last_updated_by = request.remote_addr
+            entry.color = request.form.get('color') not in ['#ffffff', '#000000'] and request.form.get('color') or None
             db.session.commit()
             return redirect(url_for('index'))
 
@@ -242,12 +249,15 @@ def init_app(app):
                 return jsonify({"error": f"Invalid category in data: {item.get('category', 'None')}"}), 400
             if not parse_date(item['date']):
                 return jsonify({"error": f"Invalid date format for {item.get('date', 'None')}, must be YYYY-MM-DD"}), 400 
+            if not re.match(r'^#[0-9a-fA-F]{6}$', item.get('color', '#ffffff')):
+                return jsonify({"error": f"Invalid color format for {item.get('color', 'None')}, must be a hex color code"}), 400
             try:
                 new_entry = Entry(
                     date=item['date'],
                     category=item['category'],
                     title=item['title'],
-                    description=item.get('description', None)
+                    description=item.get('description', None),
+                    color=item.get('color', None)
                 )
                 db.session.add(new_entry)
             except KeyError as e:

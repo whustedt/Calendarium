@@ -103,9 +103,9 @@ html, body {
 }
 .timeline-item.with-img {
     /* Styles background-image of timeline-items */
-    background-size: cover;
-    background-position: center;
-    background-blend-mode: darken;
+    background-size: cover !important;
+    background-position: center !important;
+    background-blend-mode: darken !important;
 }
 .timeline-item::before {
     content: "";
