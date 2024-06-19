@@ -7,7 +7,7 @@ from .helpers import handle_image_upload, parse_date, get_data, create_zip
 import os
 import validators
 
-def init_app(app):
+def init_app(app, scheduler):
     @app.after_request
     def after_request(response):
         """Apply CORS headers to all responses."""
@@ -229,46 +229,53 @@ def init_app(app):
         font_family = request.args.get('font-family', default='sans-serif')[:35]
         font_scale = request.args.get('font-scale', default='1')[:5]
         category_filter = request.args.get('categories')  # Get category filter from query parameters
+        load_past_images = request.args.get('load-past-images', default='true').lower() == 'true'
         
         data = get_data(db, category_filter)
         display_celebration = any(entry.get('is_today') and entry.get('category').get('display_celebration') for entry in data.get('entries'))
         
-        return make_response(render_template('timeline/timeline.html', entries=data.get('entries'), categories=data.get('categories'), display_celebration=display_celebration, timeline_height=timeline_height, font_family=font_family, font_scale=font_scale))
+        return make_response(render_template('timeline/timeline.html', entries=data.get('entries'), categories=data.get('categories'), load_past_images=load_past_images, display_celebration=display_celebration, timeline_height=timeline_height, font_family=font_family, font_scale=font_scale))
 
     @app.route('/api/data', methods=['GET'])
     def api_data():
         """Return a JSON response with data for all data, including image URLs.""" 
         return jsonify(get_data(db))
     
+    @scheduler.task('cron', id='update_serial_entries', month=1, day=1, hour=3, minute=0)
     @app.route('/update-serial-entries', methods=['POST'])
     def update_serial_entries():
         """Update all serial entries to the current year for categories that repeat annually."""
-        current_year = datetime.now().year
-        serial_categories = db.session.query(Category).filter_by(repeat_annually=True).all()
-        category_ids = [category.id for category in serial_categories]
-    
-        serial_entries = db.session.query(Entry).filter(Entry.category_id.in_(category_ids)).all()
-        for entry in serial_entries:
-            entry.date = f"{current_year}-{entry.date.split('-')[1]}-{entry.date.split('-')[2]}"
-        db.session.commit()
-        return jsonify({"message": "All serial entries have been updated to the current year"}), 200
+        with scheduler.app.app_context():
+            current_year = datetime.now().year
+            serial_categories = db.session.query(Category).filter_by(repeat_annually=True).all()
+            category_ids = [category.id for category in serial_categories]
+        
+            serial_entries = db.session.query(Entry).filter(Entry.category_id.in_(category_ids)).all()
+            for entry in serial_entries:
+                entry.date = f"{current_year}-{entry.date.split('-')[1]}-{entry.date.split('-')[2]}"
+            db.session.commit()
+            scheduler.app.logger.info("All serial entries have been updated to the current year")
+            return jsonify({"message": "All serial entries have been updated to the current year"}), 200
 
+    @scheduler.task('cron', id='purge_old_entries', month='*', day=1, hour=5, minute=0)
     @app.route('/purge-old-entries', methods=['POST'])
     def purge_old_entries():
         """Delete old entries that are linked to categories that are not protected and are past the current date."""
-        current_date = datetime.now().date()
-        unprotected_categories = db.session.query(Category).filter_by(is_protected=False).all()
-        category_ids = [category.id for category in unprotected_categories]
-    
-        old_entries = db.session.query(Entry).filter(Entry.category_id.in_(category_ids), Entry.date < str(current_date)).all()
-        for entry in old_entries:
-            if entry.image_filename:
-                image_path = os.path.join(app.config['UPLOAD_FOLDER'], entry.image_filename)
-                if os.path.exists(image_path):
-                    os.remove(image_path)
-            db.session.delete(entry)
-        db.session.commit()
-        return jsonify({"message": "Old entries have been purged"}), 200
+        with scheduler.app.app_context():
+            current_date = datetime.now().date()
+            unprotected_categories = db.session.query(Category).filter_by(is_protected=False).all()
+            category_ids = [category.id for category in unprotected_categories]
+        
+            old_entries = db.session.query(Entry).filter(Entry.category_id.in_(category_ids), Entry.date < str(current_date)).all()
+            for entry in old_entries:
+                if entry.image_filename:
+                    image_path = os.path.join(app.config['UPLOAD_FOLDER'], entry.image_filename)
+                    if os.path.exists(image_path):
+                        os.remove(image_path)
+                db.session.delete(entry)
+            db.session.commit()
+            scheduler.app.logger.info("Old entries have been purged")
+            return jsonify({"message": "Old entries have been purged"}), 200
     
     @app.route('/batch-import', methods=['POST'])
     def batch_import():
